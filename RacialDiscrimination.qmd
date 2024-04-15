@@ -1,0 +1,364 @@
+---
+title: RacialDiscrimination
+format: html
+editor: visual
+---
+
+## Introduction
+
+In this exploratory research I wish to investigate if there is racial bias in the grant of mortgage loans. Discrimination by race for mortgage applications would be unconstitutional in the USA and as such sufficient grounds for policy intervention
+
+## Data
+
+I use data released by the researchers at the federal reserve of Boston. The data set combines information from mortgage applications and and a follow-up survey of the banks and other lending institutions that received these applications. All data has to do with the mortgage applications from the greater Boston metropolitan area in 1990.
+
+Data can be downloaded [here](https://liveunibo-my.sharepoint.com/:x:/g/personal/ahmad_tahmid_studio_unibo_it/ETO2PdhRitNJmsSfRcup_3kBo7i8orHqpW_nYKX38qF4bg?e=JeODCS)
+
+```{r}
+#| output: false
+library(tidyverse)
+hmdadf<- read.csv("hmda_sw.csv")
+```
+
+Selected Variables we are working with\>\>
+
+```{r}
+#| output: false
+hmdadf <- hmdadf %>%
+
+  mutate(
+
+    black = as.numeric(s13 == "3"), #if applicant is black
+
+    piratio = s46 / 100, # ratio of the required loan paymentsto the applicant’s                                                                           #income
+
+    deny = as.numeric(s7 == "3"), #Mortagage denied 
+  
+
+    hse_inc = s45 / 100,  #housing expense to income ratio
+
+    loan_val = s6 / s50,  #loan to value ratio
+    
+
+    ccred = s43,         #Consumer credit score
+
+    mcred = s42,         #mortgage credit score
+
+    pubrec = as.numeric(s44 > 0),  #public bad credit record
+
+    denpmi = as.numeric(s53 == "1"),  #Private mortgage insurance (PMI) denied?
+    
+
+    selfemp = as.numeric(s27a == "1"), #self-employed
+
+    married = as.numeric(s23a == "M"),  #Married
+
+    single = as.numeric(married == 0),  #Single
+
+    hischl = as.numeric(school >= 12),  #high school diploma
+
+    probunmp = uria,   # unemployment rate
+
+    condo = as.numeric(s51 == "1"), #condominium 
+
+    ltv_med = as.numeric(loan_val >= 0.8 & loan_val <= 0.95), #medium loan to value                                                                  #ratio
+
+    ltv_high = as.numeric(loan_val > 0.95)) #High loan to value ratio
+```
+
+## Methods
+
+I first employ a linear and then a non-linear regression model to capture the casual relationship between mortgage denial and race and other related variables. Later I compute predicted probabilities of denial for the average black and white applicants from our logistic regression model and see how it compares with recent data. Boston Federal Reserve does not make public the individual applicants data due to confidentiality reasons and so it is impossible to recreate same regression models with recent data. But I use the difference in denial probabilities and compare it with the difference in denial rate for the report released in 2016.
+
+Finally, as an attempt to address criticisms of wealth and other confounding variable disparity between black and whites we construct a fuzzy regression discontinuity with an instrument variable.I employ an arbitrary eligibility score for discontinuity design and see if there is a statistically significant outcome for Black denial of mortgage.
+
+## Results/Analysis
+
+I begin with a simple linear regression of denial of mortgage against being black. As we see, being black is indeed an statistically significant outcome and the coefficient indicates the difference in denial probabilities for black and white applicants. A 19% differential outcome would indeed be worrisome
+
+```{r}
+rgrss1<- lm(deny~ black, data = hmdadf)
+summary(rgrss1)
+```
+
+However when accounted for omitted variables by means of multpile regression we have a different story
+
+```{r}
+linear_regression_model <- lm(deny ~ black + piratio + hse_inc + ltv_med + ltv_high + ccred + mcred + pubrec + denpmi + selfemp + hischl + probunmp + condo, data = hmdadf)
+summary(linear_regression_model)
+```
+
+The results for black, P/I ratio high loan to value ratio, customer credit score, bad public credit record, denied PMI are all statistically significant at 1% significance level. The coefficient on black in this regression(\~0.08) indicates the difference in denial probabilities for black and white applicants is \~8 percentage points holding other variables constant (Notice however it has decreased as compared to the single regression model). By the same vein an increase in P/I ratio of 0.1 would increase the chances of denial by 4.5 % points or that having a high loan to value ratio would increase chances of denial for 19%
+
+The magnitude of coefficients matter too! Such as an estimated coefficient of 0.70 for denied private mortgage insurance means there is a 70% increased chance of being denied mortgage.
+
+**A logistic model**
+
+Knowing that our dependent variable is binary- to use a linear regression model is reductive and erroneous. Thus we resort to a logistic regression model.
+
+```{r}
+logistic_regression_model <- glm(deny ~ black + piratio + hse_inc + ltv_med + ltv_high + ccred + mcred + pubrec + denpmi + selfemp + hischl + probunmp + condo, family = binomial, data = hmdadf)
+
+summary(logistic_regression_model)
+
+```
+
+We can see there is a marked improvement from the last model. Other than unemployment rate, condominium, mcred and hse_inc all variables are statistically significant at least at 5 % significance level (including intercept)! Also notice,our **object of interest**, the coefficient on black has reduced in magnitude(*further from the single and multiple linear regression models*) meaning it has lost some of its explanatory power of differential outcomes for mortgage denial between race holding other variables constant .
+
+So far**,** our main contention was whether there is a racial bias for the mortgage acceptance or denial. **In an ideal world the coeffcient on black should be 0.** And our results show statistically significant-(plausible)evidence for discrimination in the sense that there are differential outcomes for blacks holding other variables constant. But is it sufficient to call for policy intervention to correct racial bias? Assuming the data and the model we used are correct representations of reality, notwithstanding, it is difficult to evade questions of possible errors in data, alternative non-linear functional forms or interaction between variables not investigated . Going past the debates of internal validity there is also the question of external validity. There is nothing to say that such results from 1990s Boston would hold elsewhere and at different times. We would have to investigate data from different place and different time and see if such results persist. It is also of consideration that nowadays the mortgage applications are vetted by algorithms which cannot be subject to any face-to-face interview writ large with racial prejudice
+
+\####
+
+As mentioned before, we accessed the report released by Boston Federal Reserve
+
+```{r}
+#| output: false
+df<- read.csv("HMDArep6_16.csv")
+head(df)
+# Convert x_3 and x_7 to numeric by removing the percentage sign and converting to numeric
+df$X.3 <- as.numeric(gsub("%", "", df$X.3))
+df$X.7 <- as.numeric(gsub("%", "", df$X.7))
+
+# Calculate the average of the values of x_3 for white_denialrate
+white_denialrate <- mean(df$X.3, na.rm = TRUE)
+
+# Calculate the average of the values of x_7 for black_denialrate
+black_denialrate <- mean(df$X.7, na.rm = TRUE)
+
+```
+
+```{r}
+rates <- data.frame(white_denialrate, black_denialrate)
+print(rates)
+```
+
+```{r}
+#| output: false
+# Make a summary of all mean values of variables
+summary_vars <- hmdadf %>%
+  summarise(
+    mean_piratio = mean(piratio, na.rm = TRUE),
+    mean_hse_inc = mean(hse_inc, na.rm = TRUE),
+    mean_ccred = mean(ccred, na.rm = TRUE),
+    mean_mcred = mean(mcred, na.rm = TRUE),
+    mean_pubrec = mean(pubrec, na.rm = TRUE),
+    mean_denpmi = mean(denpmi, na.rm = TRUE),
+    mean_selfemp = mean(selfemp, na.rm = TRUE),
+    mean_hischl = mean(hischl, na.rm = TRUE),
+    mean_probunmp = mean(probunmp, na.rm = TRUE),
+    mean_condo = mean(condo, na.rm = TRUE),
+    mean_ltv_med = mean(ltv_med, na.rm = TRUE),
+    mean_ltv_high = mean(ltv_high, na.rm = TRUE)
+  )
+```
+
+```{r}
+#| output: false
+# Compute the predicted probability of deny for the average individual, white
+coefficients <- coef(logistic_regression_model)
+mean_values <- summary_vars %>% unlist()
+
+# Compute the linear predictor for the average white individual
+linear_predictor_at_means <- coefficients['(Intercept)'] +
+  coefficients['piratio'] * mean_values['mean_piratio'] +
+  coefficients['hse_inc'] * mean_values['mean_hse_inc'] +
+  coefficients['ltv_med'] * mean_values['mean_ltv_med'] +
+  coefficients['ltv_high'] * mean_values['mean_ltv_high'] +
+  coefficients['ccred'] * mean_values['mean_ccred'] +
+  coefficients['mcred'] * mean_values['mean_mcred'] +
+  coefficients['pubrec'] * mean_values['mean_pubrec'] +
+  coefficients['denpmi'] * mean_values['mean_denpmi'] +
+  coefficients['selfemp'] * mean_values['mean_selfemp'] +
+  coefficients['hischl'] * mean_values['mean_hischl'] +
+  coefficients['probunmp'] * mean_values['mean_probunmp'] +
+  coefficients['condo'] * mean_values['mean_condo']
+
+
+# Convert the linear predictor to a probability
+prob_at_means_white <- plogis(linear_predictor_at_means)
+
+# Compute the predicted probability of deny for the average individual, black
+linear_predictor_at_means_black <- linear_predictor_at_means + coefficients['black']
+
+# Convert the linear predictor to a probability for black
+prob_at_means_black <- plogis(linear_predictor_at_means_black)
+
+```
+
+```{r}
+predicted_probabilities<- data.frame(prob_at_means_white, prob_at_means_black)
+print(predicted_probabilities)
+```
+
+The differences in denial rate is actually 2 percentage points more than the differences in our predicted denial probability from 1990 data. It is nonsensical to compare them directly *(different time and also different place\*we have averaged the denial rates of Maine, Massachusetts, New Hampshire, Connecticut etc from the report)* **but what is remarkable** is that not only the predicted denial rates for blacks and whites differ but they have increased over the years seemingly!
+
+This really begs the question what is it that we are missing? Why hasn't there been any intervention if an average black person is subject to egregious partiality- *all things constant*- when compared with his white counterpart? It also contravenes common sense to think a financial profiting institution would turn down a perfectly good application just because of minority status. A survey by the Boston Federal Reserve in 1992 had confirmed that minorities with perfect scores are almost certain of being approved [(97%)](https://www.bostonfed.org/publications/research-department-working-paper/1992/mortgage-lending-in-boston-interpreting-hmda-data.aspx). It is obvious we cannot readily conclude racial discrimination as a piece to this puzzle!
+
+**A regression discontinuity**
+
+A [2020](https://www.bostonfed.org/news-and-events/news/2020/10/landmark-boston-fed-hdma-paper-recapped.aspx) report by the federal reserve of Boston which revisits this study includes a possible answer to the paradox ".....Boston's minority applicants, on average, had less wealth, weaker credit history, and higher loan-to-value ratios compared with white applicants, and these factors accounted for a sizable portion of the difference in denial rates, though not nearly not all of it". **To this end** we were interested in exploring new avenues to investigate if this could be a possible explanation for the persistent gaps in differential mortgage outcomes for blacks and whites .
+
+But where do we start? Mortgage applications are complicated and if we were to put ourselves in the shoes of a loan officer at the bank we are dealing with a lot of variables. A lot goes into consideration. For our purposes we resort to the continuous variable of P/I ratio that we introduced and worked with earlier. Common sense suggests that it is easier to make payments on loans when it is 10% of ones income when compared to 50%! Is there a cutoff where loans are accepted or denied as a sort of requisite condition? And if we could estimate a threshold then we could set up a regression discontinuity and find out if there are statistically significant differential outcomes for blacks.
+
+```{r}
+#| output: false
+library(rddensity) # For nonparametric regression discontinuity density tests
+library(estimatr) # For IV regression
+```
+
+```{r}
+#| output: false
+# Select 150 random observations
+set.seed(123) # Set seed for reproducibility
+df_sample <- hmdadf %>% sample_n(150)
+
+```
+
+```{r}
+# Plot deny against piratio for randomly selected 150 observations
+ggplot(df_sample, aes(x = piratio, y = deny)) +
+  geom_point() +
+  labs(x = "PI Ratio", y = "Deny") +
+  theme_minimal()
+```
+
+To the naked eye- there is an uptick of the denial for values of P/I ratio \>= 0.4.
+
+Graphically we can visualize the P/I ratio cutoff and outcomes
+
+```{r}
+ggplot(hmdadf, aes(x = piratio, y = deny, color = piratio <= 0.4)) +
+  geom_point(alpha = 0.3,
+             position = position_jitter()) +
+  geom_vline(xintercept = 0.4) +
+  labs(x = "P/I Ratio", y = "Mortgage Application Denied") 
+
+```
+
+```{r}
+ggplot(hmdadf, aes(x = piratio, fill = as.factor(deny))) +
+  geom_histogram(position = "identity", alpha = 0.5, bins = 30) +
+  geom_vline(xintercept = 0.4, color = "red", linetype = "dashed") +
+  labs(fill = "Mortgage Applications Denied", x = "PI Ratio", y = "Count") + xlim(0,1) +
+  theme_minimal()
+```
+
+As we can we can see almost all of the mortgage loans given happened \<=0.4
+
+```{r}
+hmdadf %>%
+  group_by(deny, piratio <= 0.4) %>%
+  summarize(count = n()) %>%
+  group_by(deny) %>%
+  mutate(prop = count / sum(count))
+
+
+```
+
+Vast majority of mortgages that were given (80.8%) had a P/I ratio of \<=0.4. So we set the arbitrary cut off threshold at P/I ratio of 0.4 . However we also notice there is no **perfect compliance** . 194 people were not given mortgage even though they had a P/I ratio of \<=0.4!
+
+So we construct a fuzzy regression discontinuity
+
+```{r}
+ggplot(hmdadf, aes(x = piratio, y = deny, color = as.factor(black))) +
+  geom_point(size = 1, alpha = 0.3) +
+  geom_smooth(data = filter(hmdadf, piratio <= 0.4), method = "lm", se = FALSE) +
+  geom_smooth(data = filter(hmdadf, piratio > 0.4), method = "lm", se = FALSE) +
+  geom_vline(xintercept = 0.4, linetype = "dashed", color = "black") +
+  labs(x = "P/I ratio", y = "Mortgage Denied", color = "Is Black") +
+  scale_color_manual(values = c("blue", "red"), labels = c("Not Black", "Black")) +
+  xlim(0, 1) +
+  theme_minimal()
+```
+
+We are interested in knowing if the discontinuity is statistically significant at the cutoff when regressed against black. If it is, we can have a stronger claim to racial bias than before. We constructed a 2 stage least squares estimation using the observations below the cut off as our instrument variable.
+
+```{r}
+hmdadf <- hmdadf %>%
+  mutate(piratio_thold = piratio - 0.4,
+         below_cutoff = piratio <= 0.4)
+###We’ve added a new column called “below_cutoff,” which will serve as our instrument. In most cases,
+#this column will align with the deny column, reflecting that the majority of individuals are compliers.
+##However, there are instances where individuals did not comply, such as the 171 poeple, who was not below the cutoff but still got the mortgage
+```
+
+```{r}
+model_fuzzy <- iv_robust(
+  deny ~ piratio_thold + black | piratio_thold + below_cutoff,
+  data = filter(hmdadf, piratio_thold >= -0.25 & piratio_thold <= 0.25)
+)
+summary(model_fuzzy)
+
+```
+
+The coefficient on black is not statistically significant. To sum up, we were interested in finding if the eligibility criteria of P/I ratio of less than or equal to 0.4 has a differential outcome for mortgage for black applicants as compared to white applicants.
+
+We have insufficient evidence to establish there is a discontinuity at the eligibility point for black people
+
+## Conclusion
+
+My linear and non linear regression models used on the 1990 Boston Federal Reserve data estimate substantial differences in mortgage denial rates **for otherwise similar black and white applicants**. We entertained the question of whether this is plausible evidence for racial bias in mortgage markets. We discussed questions of internal validity and considered if recent observation of denial rates for races hold any interpretation for external validity. To answer the strongest critique of such differential probabilities we addressed the systemic issue of black
+
+**I conclude we do not have sufficient evidence for racial bias in mortgage loans.** Myconclusion and study have important policy implications such that
+
+-   Disparities in black versus white denial rates may reflect the differences in underlying measures of applicant credit risk. Thus a wide scale policy intervention or instituting a robust fair lending enforcement by the governemnt will do little to reduce the gap. However, policies or algorithm training that improve the sensitivity to observed risk characteristics of black people may be more useful!
+
+-   Policies that target and improve financial literacy can help improve credit scores and in turn reduce denial rates for black people
+
+-   Our findings(or studies like these) can help reduce the disparity in denial rates by easing fears and prompting the blacks or marginalized to not be discouraged and apply for loans
+
+## Appendix
+
+To test the assumption of regression discontinuity we want to show othercontrol variables are continuous at the cutoff point
+
+```{r}
+#Lets define our eligibility variable 
+hmdadf$El<- ifelse( hmdadf$piratio<= 0.4, 0, 1)
+test1<-lm(formula = hse_inc ~ El + piratio_thold, data = hmdadf)
+test1
+test2<-lm(formula = loan_val ~ El + piratio_thold, data = hmdadf)
+test2
+###As we can see can see for no tests are eligibility variable statsitically significant so our assumption 1 is supported 
+```
+
+##For assumption 2 we are showing there is no sorting happening at the eligibility cutoff. *Is valid for no compliance scenario?*
+
+```{r}
+#| output: false
+test_density <- rddensity(hmdadf$piratio, c = 0.4)
+summary(test_density)
+
+plot_density_test <- rdplotdensity(rdd = test_density,
+                                   X = hmdadf$piratio,
+                                   type = "both") # This adds both points and lines
+##It’s notable from the graph that the confidence intervals exhibit
+#considerable overlap. The p-value for the extent of this overlap stands at 0.0987, exceeding 0.05.
+##Hence, we lack compelling evidence supporting a substantial difference between the two lines. Considering
+#both the graph and the t-statistic, we can confidently assert that there’s likely no manipulation or clustering
+##occurring.
+```
+
+**Miscellaneous**
+
+```{r}
+{r}
+# Probit regression of deny against piratio
+probit_model <- glm(deny ~ piratio, family = binomial(link = "probit"), data = hmdadf)
+
+# Plot deny against piratio for randomly selected 150 observations and fit it with the regression line
+set.seed(123) # For reproducibility
+df_sample <- hmdadf %>% sample_n(150)
+
+ggplot(df_sample, aes(x = piratio, y = deny)) +
+  geom_point() +
+  geom_smooth(method = "glm", method.args = list(family = binomial(link = "probit")), se = FALSE) +
+  labs(x = "PI Ratio", y = "Deny") +
+  theme_minimal()
+
+# Find the value of piratio for which the change in slope of the regression line is the highest
+# For a probit model, the change in slope is highest at the mean of piratio
+# This is because the probit link function is symmetric and the variance of the normal distribution is highest at the mean
+mean_piratio <- mean(hmdadf$piratio, na.rm = TRUE)
+
+mean_piratio
+```
